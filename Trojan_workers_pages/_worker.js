@@ -1,82 +1,166 @@
-// src/worker.js
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request))
+})
+
+async function handleRequest(request) {
+  const url = new URL(request.url);
+  const env = {
+    proxyip: request.headers.get('X-Proxy-IP'), // 假设客户端通过这个自定义头来指定代理IP
+    pswd: request.headers.get('X-Password') // 假设客户端通过这个自定义头来指定密码
+  };
+
+  // 检查请求是否为YouTube视频流请求
+  if (url.hostname.endsWith('.googlevideo.com') || url.hostname.endsWith('.youtube.com')) {
+    const response = await fetch(request);
+    const videoData = await response.text();
+
+    // 尝试修改视频数据以跳过广告
+    const modifiedVideoData = videoData.replace(/ad_type="[^"]+"/, 'ad_type=""');
+
+    return new Response(modifiedVideoData, {
+      status: 200,
+      headers: response.headers,
+    });
+  }
+
+  // 其他请求，使用 Cloudflare Workers 的 fetch 方法
+  return fetch(request, env, event.workers);
+}
+
+// 导入 Cloudflare Workers 特定的库
 import { connect } from "cloudflare:sockets";
+import { sha256 } from 'some-crypto-library'; // 确保引入了合适的加密库
 
 let Pswd = "trojan";
-const proxyIPs = ["cdn.xn--b6gac.eu.org"]; //workers.cloudflare.cyou bestproxy.onecf.eu.org cdn-all.xn--b6gac.eu.org cdn.xn--b6gac.eu.org
-let hostnames = [''];
+const proxyIPs = ["cdn.xn--b6gac.eu.org"]; // 根据需要添加其他代理IP
+let hostnames = ['']; // 根据需要初始化hostnames数组
 
-let sha224Password;
-let proxyIP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
-const worker_default = {
+// 假设的 gettrojanConfig 函数，你需要根据实际情况实现它
+function gettrojanConfig(pswd, host) {
+  // 返回 Trojan 配置的HTML字符串
+  return `Trojan配置页面，密码: ${pswd}, 域名: ${host}`;
+}
+
+async function fetch(request, env, ctx) {
+  let proxyIP = env.proxyip || proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
+  Pswd = env.pswd || Pswd;
+  let sha224Password = sha256.sha224(Pswd); // 确保使用正确的加密函数
+
+  const upgradeHeader = request.headers.get("Upgrade");
+  if (!upgradeHeader || upgradeHeader !== "websocket") {
+    const url = new URL(request.url);
+    switch (url.pathname) {
+      case "/cf":
+        return new Response(JSON.stringify(request.cf, null, 4), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json;charset=utf-8",
+          },
+        });
+      case `/${Pswd}`: {
+        const trojanConfig = gettrojanConfig(Pswd, request.headers.get("Host"));
+        return new Response(`${trojanConfig}`, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/html;charset=utf-8",
+          },
+        });
+      }
+      default:
+        // 这里可以添加更多的逻辑来处理不同的路径
+        break;
+    }
+  }
+
+  // 默认行为，通过代理IP转发请求
+  const response = await ctx.fetch(request, {
+    proxy: {
+      host: proxyIP,
+      port: 80, // 根据实际情况设置端口
+    },
+  });
+
+  return response;
+}
+// src/worker.js
+ 从“cloudflare：sockets”导入{  connect  } ； 
+
+让 Pswd = “trojan” ;
+const  proxyIPs = [ “cdn.xn--b6gac.eu.org” ] ; //workers.cloudflare.cyou bestproxy.onecf.eu.org cdn-all.xn--b6gac.eu.org cdn.xn--b6gac.eu.org
+让 主机名= [ '' ]；
+
+让 sha224密码；
+让 proxyIP = proxyIPs [ Math.floor ( Math.random  ( ) * proxyIPs.length ) ] ;    
+const   worker_default = {
   /**
-   * @param {import("@cloudflare/workers-types").Request} request
-   * @param {proxyip: string, pswd: string} env
-   * @param {import("@cloudflare/workers-types").ExecutionContext} ctx
-   * @returns {Promise<Response>}
+   * @param {import("@cloudflare/workers-types").Request} 请求
+   * @param {proxyip: string, pswd: string} 环境
+   * @param {导入（“@cloudflare/workers-types”）。ExecutionContext} ctx
+   *@returns{Promise<响应>}
    */
-  async fetch(request, env, ctx) {
-    try {
-      proxyIP = env.proxyip || proxyIP;
-      Pswd = env.pswd || Pswd;
-      sha224Password = sha256.sha224(Pswd);
-      const upgradeHeader = request.headers.get("Upgrade");
-      if (!upgradeHeader || upgradeHeader !== "websocket") {
-        const url = new URL(request.url);
-        switch (url.pathname) {
-          case "/cf":
-            return new Response(JSON.stringify(request.cf, null, 4), {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json;charset=utf-8",
-              },
-            });
+  异步获取（请求，环境，ctx ）{
+    嘗試{
+      代理IP = 环境。代理IP || 代理IP;
+      密码 = 环境.密码|| 密码;
+      sha224密码 = sha256.sha224 (密码) ;
+      const  upgradeHeader = 请求. headers . get ( "升级" ) ;
+      如果 （！upgradeHeader || upgradeHeader！== “websocket” ） {
+        const  url =新的URL (请求. url ) ;
+        switch （ url.路径名） {
+          案例 “/cf”：
+            返回新的响应（ JSON。stringify （ request。cf ，null，4 ），{
+              状态：200，
+              标题：{
+                “内容类型”：“application/json;charset=utf- 8 ”，
+              }，
+            }）；
 
-          case `/${Pswd}`: {
-            const trojanConfig = gettrojanConfig(Pswd, request.headers.get("Host"));
-            return new Response(`${trojanConfig}`, {
-              status: 200,
-              headers: {
-                "Content-Type": "text/html;charset=utf-8",
-              },
-            });
+          案例 `/ ${密码} ` : {
+            const   trojanConfig = gettrojanConfig  (密码，request.headers.get ( "  Host  "  )  ) ;
+            返回新的响应（` ${ trojanConfig } `，{
+              状态：200，状态：200，
+              标题：{
+                "内容类型"：“text/html;charset=utf- 8 ”，
+              }，
+            }）；
           }
-          default:
-            // return new Response('Not found', { status: 404 });
-            // For any other path, reverse proxy to 'ramdom website' and return the original response, caching it in the process
-            if (hostnames.includes('')) {
-            return new Response(JSON.stringify(request.cf, null, 4), {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json;charset=utf-8",
-              },
-            });
-            }
-            const randomHostname = hostnames[Math.floor(Math.random() * hostnames.length)];
-            const newHeaders = new Headers(request.headers);
-            newHeaders.set("cf-connecting-ip", "1.2.3.4");
-            newHeaders.set("x-forwarded-for", "1.2.3.4");
-            newHeaders.set("x-real-ip", "1.2.3.4");
-            newHeaders.set("referer", "https://www.google.com/search?q=edtunnel");
-            // Use fetch to proxy the request to 15 different domains
-            const proxyUrl = "https://" + randomHostname + url.pathname + url.search;
-            let modifiedRequest = new Request(proxyUrl, {
-              method: request.method,
-              headers: newHeaders,
-              body: request.body,
-              redirect: "manual",
-            });
-            const proxyResponse = await fetch(modifiedRequest, { redirect: "manual" });
-            // Check for 302 or 301 redirect status and return an error response
-            if ([301, 302].includes(proxyResponse.status)) {
-              return new Response(`Redirects to ${randomHostname} are not allowed.`, {
-                status: 403,
-                statusText: "Forbidden",
-              });
-            }
-            // Return the response from the proxy server
-            return proxyResponse;
-        }
-      } else {
+          默认：
+            // 返回新的Response('未找到', { status: 404 });
+            // 对于常见的路径，反向代理到“随机网站”并返回原始响应，并在过程中将其缓存
+            如果 （主机名.包括（''））{
+            返回新的响应（ JSON。stringify （ request。cf ，null，4 ），{
+              状态：200，
+              标题：{ {
+                “内容类型”：“application/json;charset=utf-8”，“内容类型”：“application/json;charset=utf-8”，
+              }，}，
+            });} ）；
+            }}
+            const  randomHostname = 主机名[ (主机名 ;floor(random()length)]const randomHostname = hostnames[Math.floor(Math.random() * hostnames.length)];
+            const newHeaders = new Headers(request.headers);const newHeaders = new Headers(request.headers);
+            newHeaders.设置（“cf-connecting-ip”，“1.2.3.4”）；set("cf-connecting-ip", "1.2.3.4");
+            newHeaders.设置（“x-forwarded-for”，“1.2.3.4”）；set("x-forwarded-for", "1.2.3.4");
+            newHeaders.设置（“x-real-ip”，“1.2.3.4”）；set("x-real-ip", "1.2.3.4");
+            newHeaders.set（“referer”，“https://www.google.com/search?q=edtunnel”）；set("referer", "https://www.google.com/search?q=edtunnel");
+            // 使用 fetch 将请求代理到 15 个不同的域// Use fetch to proxy the request to 15 different domains
+            const proxyUrl = "https://" + randomHostname + url.pathname + url.search;const proxyUrl = "https://" + randomHostname + url.pathname + url.search;
+            让 modifiedRequest = new Request（proxyUrl，{let modifiedRequest = new Request(proxyUrl, {
+              方法： request.method，method: request.method,
+              标头：newHeaders，headers: newHeaders,
+              主体：请求主体，body: request.body,
+              重定向：“手动”，redirect: "manual",
+            });});
+            const proxyResponse = await fetch(modifiedRequest，{重定向：“manual”});const proxyResponse = await fetch(modifiedRequest, { redirect: "manual" });
+            // 检查 302 或 301 重定向状态并返回错误响应// Check for 302 or 301 redirect status and return an error response
+            如果（[301，302].包括（proxyResponse.status））{if ([301, 302].includes(proxyResponse.status)) {
+              返回新的 Response(`不允许重定向到 ${randomHostname}。`, {return new Response(`Redirects to ${randomHostname} are not allowed.`, {
+                状态：403，status: 403,
+                状态文本：“禁止”，statusText: "Forbidden",
+              });});
+            }}
+            // 返回代理服务器的响应// Return the response from the proxy server
+            返回代理响应；return proxyResponse;
+        }}
+      } 别的 {} else {
         return await trojanOverWSHandler(request);
       }
     } catch (err) {
